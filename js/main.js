@@ -110,6 +110,9 @@ function createLights() {
 	shadowLight.shadow.mapSize.width = 2048;
 	shadowLight.shadow.mapSize.height = 2048;
 
+  ambientLight = new THREE.AmbientLight(0xFFFFFF, .2);
+  scene.add(ambientLight);
+
 	// to activate the lights, just add them to the scene
 	scene.add(hemisphereLight);
 	scene.add(shadowLight);
@@ -117,29 +120,74 @@ function createLights() {
 
 // First let's define a Sea object : THAT'S ACTUALLY A SEA --CLASS--
 Sea = function(){
-
-	// create the geometry (shape) of the cylinder;
-	// the parameters are:
-	// radius top, radius bottom, height, number of segments on the radius, number of segments vertically
 	var geom = new THREE.CylinderGeometry(600,600,800,40,10);
-
-	// rotate the geometry on the x axis
 	geom.applyMatrix(new THREE.Matrix4().makeRotationX(-Math.PI/2));
 
-	// create the material
+	// important: by merging vertices we ensure the continuity of the waves
+	geom.mergeVertices();
+
+	// get the vertices
+	var l = geom.vertices.length;
+
+	// create an array to store new data associated to each vertex
+	this.waves = [];
+
+	for (var i=0; i<l; i++){
+		// get each vertex
+		var v = geom.vertices[i];
+
+		// store some data associated to it
+		this.waves.push({y:v.y,
+										 x:v.x,
+										 z:v.z,
+										 // a random angle
+										 ang:Math.random()*Math.PI*2,
+										 // a random distance
+										 amp:5 + Math.random()*15,
+										 // a random speed between 0.016 and 0.048 radians / frame
+										 speed:0.016 + Math.random()*0.032
+										});
+	};
 	var mat = new THREE.MeshPhongMaterial({
-		color:Colors.blue,
+		color:Colors.red,
 		transparent:true,
-		opacity:.6,
+		opacity:.8,
 		shading:THREE.FlatShading,
 	});
 
-	// To create an object in Three.js, we have to create a mesh
-	// which is a combination of a geometry and some material
 	this.mesh = new THREE.Mesh(geom, mat);
-
-	// Allow the sea to receive shadows
 	this.mesh.receiveShadow = true;
+
+}
+
+Sea.prototype.moveWaves = function (){
+
+	// get the vertices
+	var verts = this.mesh.geometry.vertices;
+	var l = verts.length;
+
+	for (var i=0; i<l; i++){
+		var v = verts[i];
+
+		// get the data associated to it
+		var vprops = this.waves[i];
+
+		// update the position of the vertex
+		v.x = vprops.x + Math.cos(vprops.ang)*vprops.amp;
+		v.y = vprops.y + Math.sin(vprops.ang)*vprops.amp;
+
+		// increment the angle for the next frame
+		vprops.ang += vprops.speed;
+
+	}
+
+	// Tell the renderer that the geometry of the sea has changed.
+	// In fact, in order to maintain the best level of performance,
+	// three.js caches the geometries and ignores any changes
+	// unless we add this line
+	this.mesh.geometry.verticesNeedUpdate=true;
+
+	sea.mesh.rotation.z += .005;
 }
 
 // Instantiate the sea and add it to the scene:
@@ -162,11 +210,11 @@ Cloud = function(){
 
 	// create a cube geometry;
 	// this shape will be duplicated to create the cloud
-	var geom = new THREE.BoxGeometry(20,20,20);
+	var geom = new THREE.BoxGeometry(2,2,2);
 
 	// create a material; a simple white material will do the trick
 	var mat = new THREE.MeshPhongMaterial({
-		color:Colors.white,
+		color:Colors.red,
 	});
 
 	// duplicate the geometry a random number of times
@@ -202,7 +250,7 @@ Sky = function(){
 	this.mesh = new THREE.Object3D();
 
 	// choose a number of clouds to be scattered in the sky
-	this.nClouds = 20;
+	this.nClouds = 100;
 
 	// To distribute the clouds consistently,
 	// we need to place them according to a uniform angle
@@ -265,7 +313,7 @@ var AirPlane = function() {
 	this.mesh.add(cockpit);
 
   var geomShield = new THREE.CylinderGeometry(30, 30, 10, 50);
-  var matShield = new THREE.MeshPhongMaterial({color:Colors.grey, shading:THREE.FlatShading});
+  var matShield = new THREE.MeshPhongMaterial({color:Colors.grey, shading:THREE.FlatShading, opacity:.9});
   var shield = new THREE.Mesh(geomShield, matShield);
   shield.castShadow = true;
 	shield.receiveShadow = true;
@@ -337,26 +385,23 @@ function loop(){
 
 	// update the plane on each frame
 	updatePlane();
-
+  sea.moveWaves();
 	renderer.render(scene, camera);
 	requestAnimationFrame(loop);
 }
 
 function updatePlane(){
+	var targetY = normalize(mousePos.y,-.75,.75,25, 175);
+	var targetX = normalize(mousePos.x,-.75,.75,-100, 100);
 
-	// let's move the airplane between -100 and 100 on the horizontal axis,
-	// and between 25 and 175 on the vertical axis,
-	// depending on the mouse position which ranges between -1 and 1 on both axes;
-	// to achieve that we use a normalize function (see below)
+	// Move the plane at each frame by adding a fraction of the remaining distance
+	airplane.mesh.position.y += (targetY-airplane.mesh.position.y)*0.1;
 
-	var targetX = normalize(mousePos.x, -1, 1, -100, 100);
-	var targetY = normalize(mousePos.y, -1, 1, 25, 175);
+	// Rotate the plane proportionally to the remaining distance
+	airplane.mesh.rotation.z = (targetY-airplane.mesh.position.y)*0.0128;
+	airplane.mesh.rotation.x = (airplane.mesh.position.y-targetY)*0.0064;
 
-	// update the airplane's position
-	airplane.mesh.position.y = targetY;
-	airplane.mesh.position.x = targetX;
 	airplane.propeller.rotation.y += 0.5;
-  //airPlane.cockpit.rotation.y += 0.3;
 }
 
 function normalize(v,vmin,vmax,tmin, tmax){

@@ -250,7 +250,7 @@ Sky = function(){
 	this.mesh = new THREE.Object3D();
 
 	// choose a number of clouds to be scattered in the sky
-	this.nClouds = 100;
+	this.nClouds = 500;
 
 	// To distribute the clouds consistently,
 	// we need to place them according to a uniform angle
@@ -263,7 +263,7 @@ Sky = function(){
 		// set the rotation and the position of each cloud;
 		// for that we use a bit of trigonometry
 		var a = stepAngle*i; // this is the final angle of the cloud
-		var h = 750 + Math.random()*200; // this is the distance between the center of the axis and the cloud itself
+		var h = 750 + Math.random()*600; // this is the distance between the center of the axis and the cloud itself
 
 		// Trigonometry!!! I hope you remember what you've learned in Math :)
 		// in case you don't:
@@ -420,28 +420,94 @@ var mousePos={x:0, y:0};
 // now handle the mousemove event
 
 function handleMouseMove(event) {
-
-	// here we are converting the mouse position value received
-	// to a normalized value varying between -1 and 1;
-	// this is the formula for the horizontal axis:
-
-	var tx = -1 + (event.clientX / WIDTH)*2;
-
-	// for the vertical axis, we need to inverse the formula
-	// because the 2D y-axis goes the opposite direction of the 3D y-axis
-
-	var ty = 1 - (event.clientY / HEIGHT)*2;
-	mousePos = {x:tx, y:ty};
-
+  var tx = -1 + (event.clientX / WIDTH)*2;
+  var ty = 1 - (event.clientY / HEIGHT)*2;
+  mousePos = {x:tx, y:ty};
 }
 
+////////////////////////////////////////////////////////////////////////////////////////////
 
+Coin = function(){
+  var geom = new THREE.TetrahedronGeometry(5,0);
+  var mat = new THREE.MeshPhongMaterial({
+    color:0x009999,
+    shininess:0,
+    specular:0xffffff,
 
+    shading:THREE.FlatShading
+  });
+  this.mesh = new THREE.Mesh(geom,mat);
+  this.mesh.castShadow = true;
+  this.angle = 0;
+  this.dist = 0;
+}
 
+CoinsHolder = function (nCoins){
+  this.mesh = new THREE.Object3D();
+  this.coinsInUse = [];
+  this.coinsPool = [];
+  for (var i=0; i<nCoins; i++){
+    var coin = new Coin();
+    this.coinsPool.push(coin);
+  }
+}
 
+CoinsHolder.prototype.spawnCoins = function(){
 
+  var nCoins = 1 + Math.floor(Math.random()*10);
+  var d = game.seaRadius + game.planeDefaultHeight + (-1 + Math.random() * 2) * (game.planeAmpHeight-20);
+  var amplitude = 10 + Math.round(Math.random()*10);
+  for (var i=0; i<nCoins; i++){
+    var coin;
+    if (this.coinsPool.length) {
+      coin = this.coinsPool.pop();
+    }else{
+      coin = new Coin();
+    }
+    this.mesh.add(coin.mesh);
+    this.coinsInUse.push(coin);
+    coin.angle = - (i*0.02);
+    coin.distance = d + Math.cos(i*.5)*amplitude;
+    coin.mesh.position.y = -game.seaRadius + Math.sin(coin.angle)*coin.distance;
+    coin.mesh.position.x = Math.cos(coin.angle)*coin.distance;
+  }
+}
 
+CoinsHolder.prototype.rotateCoins = function(){
+  for (var i=0; i<this.coinsInUse.length; i++){
+    var coin = this.coinsInUse[i];
+    if (coin.exploding) continue;
+    coin.angle += game.speed*deltaTime*game.coinsSpeed;
+    if (coin.angle>Math.PI*2) coin.angle -= Math.PI*2;
+    coin.mesh.position.y = -game.seaRadius + Math.sin(coin.angle)*coin.distance;
+    coin.mesh.position.x = Math.cos(coin.angle)*coin.distance;
+    coin.mesh.rotation.z += Math.random()*.1;
+    coin.mesh.rotation.y += Math.random()*.1;
 
+    //var globalCoinPosition =  coin.mesh.localToWorld(new THREE.Vector3());
+    var diffPos = airplane.mesh.position.clone().sub(coin.mesh.position.clone());
+    var d = diffPos.length();
+    if (d<game.coinDistanceTolerance){
+      this.coinsPool.unshift(this.coinsInUse.splice(i,1)[0]);
+      this.mesh.remove(coin.mesh);
+      particlesHolder.spawnParticles(coin.mesh.position.clone(), 5, 0x009999, .8);
+      addEnergy();
+      i--;
+    }else if (coin.angle > Math.PI){
+      this.coinsPool.unshift(this.coinsInUse.splice(i,1)[0]);
+      this.mesh.remove(coin.mesh);
+      i--;
+    }
+  }
+}
+
+function createCoins(){
+
+  coinsHolder = new CoinsHolder(20);
+  scene.add(coinsHolder.mesh)
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 window.addEventListener('load', init, false);
 
 function init(event){
@@ -450,7 +516,7 @@ function init(event){
 	createPlane();
 	createSea();
 	createSky();
-
+  createCoins();
 	//add the listener
 	document.addEventListener('mousemove', handleMouseMove, false);
 

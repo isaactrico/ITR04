@@ -3,5 +3,6 @@
 	width: 100%;
 	height: 100%;
 	overflow: hidden;
-	background: linear-gradient(#FFFFFF, #000000);
+  background: #000000;
+	/* background: linear-gradient(#201283, #247adb, #e26821); */
 }
